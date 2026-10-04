@@ -1,0 +1,12 @@
+[project]
+name = "fraud-ml-system"
+version = "1.0.0"
+requires-python = ">=3.10"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: spins up Spark (needs Java)"]
+filterwarnings = ["ignore::DeprecationWarning", "ignore::UserWarning"]

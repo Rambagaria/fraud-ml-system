@@ -1,0 +1,12 @@
+# serving + streaming + training
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pydantic>=2.6
+numpy>=1.26
+pandas>=2.1
+scikit-learn>=1.4
+xgboost>=2.0
+redis>=5.0
+prometheus-client>=0.20
+httpx>=0.27
+confluent-kafka>=2.3

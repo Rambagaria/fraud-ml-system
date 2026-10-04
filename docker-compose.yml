@@ -1,0 +1,48 @@
+# Full local stack: Redis (online features) + Redpanda (Kafka API) + API + stream
+# consumer + Prometheus.   make up   then   make replay-kafka
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck: {test: ["CMD", "redis-cli", "ping"], interval: 5s, retries: 10}
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports: ["19092:19092"]
+    healthcheck: {test: ["CMD", "rpk", "cluster", "health"], interval: 5s, retries: 20}
+
+  api:
+    build: .
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-2}
+    volumes:
+      - ./artifacts:/app/artifacts:ro
+      - ./logs:/app/logs
+    ports: ["8000:8000"]
+    depends_on:
+      redis: {condition: service_healthy}
+
+  feature-updater:
+    build: .
+    command: ["python", "streaming/feature_updater.py", "--kafka", "redpanda:9092",
+              "--redis-url", "redis://redis:6379/0"]
+    depends_on:
+      redis: {condition: service_healthy}
+      redpanda: {condition: service_healthy}
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: ["./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+              "./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro"]
+    ports: ["9090:9090"]

@@ -1,0 +1,19 @@
+# Operational alerts (seconds-to-minutes). Model-quality drift runs as a batch job.
+groups:
+  - name: fraud-api
+    rules:
+      - alert: FraudApiP99LatencyHigh
+        expr: histogram_quantile(0.99, sum(rate(fraud_request_latency_seconds_bucket[5m])) by (le)) > 0.05
+        for: 5m
+        annotations: {summary: "p99 /predict latency above 50 ms budget"}
+      - alert: FeatureStoreDegraded
+        expr: rate(fraud_feature_store_errors_total[5m]) > 0
+        for: 2m
+        annotations: {summary: "Serving in degraded mode: Redis errors/timeouts"}
+      - alert: DeclineRateSpike
+        # Sudden jump in declines = model/feature bug or a real attack. Either way, a human looks.
+        expr: >
+          sum(rate(fraud_predictions_total{decision="DECLINE"}[15m]))
+          / sum(rate(fraud_predictions_total[15m])) > 0.01
+        for: 10m
+        annotations: {summary: "Decline rate > 1% (expected ~0.15%)"}

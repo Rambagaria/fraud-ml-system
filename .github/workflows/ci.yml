@@ -1,0 +1,41 @@
+name: ci
+on:
+  push: {branches: [main]}
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - uses: actions/setup-java@v4   # PySpark parity test
+        with: {distribution: temurin, java-version: "17"}
+      - run: pip install -r requirements-dev.txt
+      - name: Unit, parity and API tests
+        run: pytest -q
+        env: {PYTHONPATH: src}
+
+  build-and-smoke-test:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12", cache: pip}
+      - run: pip install -r requirements.txt
+      - name: Train a small model for the smoke test
+        env: {PYTHONPATH: src}
+        run: |
+          python -m fraud.data --cards 400 --days 40 --fraud-events 120 --out data/ci.csv
+          python -m fraud.train --data data/ci.csv --min-pr-auc 0 --skip-walk-forward
+      - run: docker build -t fraud-api:${{ github.sha }} .
+      - name: Container smoke test
+        run: |
+          docker run -d --name api -p 8000:8000 -v $PWD/artifacts:/app/artifacts:ro fraud-api:${{ github.sha }}
+          for i in $(seq 1 30); do curl -fs localhost:8000/health && break; sleep 1; done
+          curl -fs -X POST localhost:8000/predict -H 'content-type: application/json' \
+            -d '{"txn_id":"ci","card_id":"c1","amount":42.0,"merchant_category":"grocery","location":"city_01"}'
+      # On main, the next step would push to ECR:
+      # aws ecr get-login-password | docker login ... && docker push $ECR_REPO:${{ github.sha }}
